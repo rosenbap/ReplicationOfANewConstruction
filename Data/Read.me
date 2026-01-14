@@ -1,0 +1,19 @@
+The talc.csv data file is used by the replication files.
+
+The talc.csv file adds medication data to the alcoholSurv data set in the 
+alcoholSurv R package available at CRAN.  The first 21 variables, through
+variable "treated", are documented in the R package.  Please go there
+for documentation.  
+
+RXDUSE is from NHANES and is 1 if an individual takes
+prescription medications, 2 if not.
+
+RXDCOUNT is from NHANES and is the number of different
+presecription medications.  In R, type table(talc$RXDCOUNT,talc$RXDUSE).
+
+There follows the five most common prescription medications, 
+LISINOPRIL, etc, 1 if taken, 0 otherwise.  In R, type table(talc$RXDUSE,talc$LISINOPRIL).
+
+RXDcat groups RXDCOUNT in 0, 1-2, 3-4, >4.  In R, type table(talc$RXDCOUNT,talc$RXDcat).
+
+tgrp is the tightened-block groups in Figure 3 of the paper.
