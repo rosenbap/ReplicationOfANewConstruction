@@ -1,0 +1,568 @@
+---
+title: "Replication File for A New Construction of Evidence Factors in an Observational Study of Light Daily Alcohol Consumption and Longevity"
+output: html_document
+date: "2026-01-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+ This is a replication file for "A New Construction of Evidence
+ Factors in an Observational Study of Light Daily Alcohol
+ Consumption and Longevity".
+
+ Parts of this file are in the documentation for the R
+ package alcoholSurv at CRAN.  You MUST install that package
+ to run this replication file.
+
+ Early parts of this file replicate the analysis.  They run
+ fairly quickly.  Later parts replicate the design sensitivity 
+ and simulation calculations -- they are much slower.
+
+ The replication requires the following R packages:
+ alcoholSurv, senstrat, survival, coin, xtable.
+ 
+ In addition, to run this replication file, you need the
+ talc.csv file that is part of this supplementary material.
+ The replication file will attempt to read and slightly
+ structure the talc.csv file; so, if you don't have the file
+ or if R cannot find the file, you are likely to get an 
+ error at that attempted read.  The talc.csv file is mostly
+ the same as the alcoholSurv file from the alcoholSurv 
+ package, but it adds medication information from NHANES
+ to produce Figure 3 and Table 1 for Section 5.2.
+ 
+
+
+This section replicates Figures 1 and 2.
+
+
+```{r Fig1and2, echo=TRUE }
+library(alcoholSurv)
+data("alcoholSurv")
+par(mfrow=c(2,4),mar=c(2,4,4,3)+.1)
+g<-as.integer(alcoholSurv$gDrinks)
+g<-factor(g,levels=1:3,labels=c("D","R","N"),ordered=TRUE)
+boxplot((alcoholSurv$aDays*alcoholSurv$aDrinks)~g,ylab="Drinks/Year",las=1,main="Alcohol",
+        xlab="",cex.main=.9)
+barplot(round(tapply(alcoholSurv$female,g,mean)*100),ylim=c(0,105),
+        ylab="Percent",main="Female",las=1,cex.main=.9)
+boxplot(alcoholSurv$education~g,ylab="3=HS,  5=BA+",las=1,main="Education",
+        xlab="",cex.main=.9)
+boxplot(alcoholSurv$age~g,ylab="Years",las=1,main="Age",
+        xlab="",cex.main=.9)
+barplot(round(tapply(alcoholSurv$aEverBinge,g,mean)*100),ylim=c(0,105),
+        ylab="Percent",main="Ever Binged",las=1,cex.main=.9)
+barplot(round(tapply(alcoholSurv$smoke=="Never",g,mean)*100),ylim=c(0,105),
+        ylab="Percent",main="Never Smoked",las=1,cex.main=.9)
+barplot(round(tapply(alcoholSurv$smoke=="Everyday",g,mean)*100),ylim=c(0,105),
+        ylab="Percent",main="Smoke Everyday",las=1,cex.main=.9)
+barplot(round(tapply(alcoholSurv$smoke=="NotNow",g,mean)*100),ylim=c(0,105),
+        ylab="Percent",main="Quit Smoking",las=1,cex.main=.9)
+
+years<-alcoholSurv$time/12
+library(survival)
+years<-Surv(years,alcoholSurv$mortstat)
+par(mfrow=c(1,2),mar=c(5,4,4,2)+.1)
+boxplot(alcoholSurv$hdl~alcoholSurv$gDrinks,las=1,main="HDL Cholesterol",
+        ylab="HDL-C mg/dL",xlab="Alcohol Consumption",cex.axis=.9,cex.lab=.9)
+plot(survfit(years~g),ylim=c(.5,1),ylab="Prob(Survive>t)",xlab="Years, t",
+     xlim=c(0,10),lty=c(1,2,4),lwd=c(4,2,2),cex.lab=.9,main="Survival",
+     col=c("grey","black","black"),cex.axis=.9,las=1)
+legend(.2,.7,c("Daily","Rare","None"),lty=c(1,2,4),lwd=c(4,2,2),
+       col=c("grey","black","black"),cex=.9)
+```
+
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+This section replicates the main inferences reported in 
+Section 5.1.  This portion of the replication is also
+an example in the R package alcoholSurv.
+
+
+As suggested by O'Brien and Fleming (1987) Biometrics 43, 169-180,
+a block without a death is omitted from the permutation test.
+In a block without a death, the log-rank scores vary only
+because of unequal censoring times.
+
+
+```{r inferences, echo=TRUE}
+library(alcoholSurv)
+data("alcoholSurv")
+
+library(survival)
+sv<-survival::Surv(alcoholSurv$time,alcoholSurv$mortstat)
+svlogrank<-coin::logrank_trafo(sv, ties.method = "average-scores")
+names(svlogrank)<-alcoholSurv$treated
+
+selectBlock<-function(grps,mortstat){
+  # Return a logical vector picking out blocks with at least one
+  # death in among alcoholSurv$dGroups in grps
+  colnums<-NULL
+  if (is.element("Daily",grps)) colnums<-c(colnums,1)
+  if (is.element("Rare",grps)) colnums<-c(colnums,c(2,3))
+  if (is.element("None",grps)) colnums<-c(colnums,c(4,5))
+  mort<-t(matrix(mortstat,5,1130))
+  who<-apply(mort[,colnums],1,sum)>0 # at least one death
+  who<-as.vector(rbind(who,who,who,who,who))
+  who&is.element(alcoholSurv$gDrinks,grps)
+}
+
+who<-selectBlock(c("Daily","Rare","None"),alcoholSurv$mortstat)
+senstrat::senstrat(svlogrank[who],alcoholSurv$z[who],as.numeric(alcoholSurv$mset)[who],gamma=1,detail=TRUE)
+#
+#  As suggested by O'Brien and Fleming (1987) Biometrics 43, 169-180,
+#  a block without a death is omitted from the permutation test.
+#  In a block without a death, the log-rank scores vary only
+#  because of unequal censoring times.
+#
+lr<-svlogrank[who]
+names(lr)<-alcoholSurv$SEQN[who]
+mlr<-t(matrix(lr,5,length(lr)/5))
+mwho<-t(matrix(as.numeric(names(lr)),5,length(lr)/5))
+rownames(mlr)<-mwho[,1]
+
+
+hdl<-t(matrix(alcoholSurv$hdl,5,1130))
+
+
+#
+#  Evidence factor analysis for HDL-C
+#
+wgtRankCef(hdl,colGroups = c("D","R","R","N","N"),gammas=5.5,trunc=1,phi="u878")
+wgtRankCef(hdl,colGroups = c("D","R","R","N","N"),gammas=8.25,trunc=1,phi="u878")
+#
+#  Evidence factor analysis for survival
+#
+wgtRankCef(mlr,colGroups = c("D","R","R","N","N"),gammas=5/3,trunc=1,phi="none")
+```
+
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+This section reproduces the medication analysis in Table 1
+and Figure 3, as discussed in Section 5.2.  See the discussion
+of the talc.csv file at the top of this script.
+
+
+```{r medication, echo=TRUE}
+library(xtable)
+talc<-read.csv("talc.csv")
+talc$tgrp<-factor(talc$tgrp,levels=c("D","Rc","Ro","Nc","No"),
+     labels=c("aD","bRc","cRo","dNc","dNo"))
+talc$tgrp2<-factor(talc$tgrp2,levels=c("D","Rc","Nc","Ro","No"),ordered=TRUE)
+drcnt<-tapply(talc$RXDCOUNT,talc$gDrinks,quantile,
+     c(.25,.5,.75,.8,.85,.9,.95,.975))
+
+
+drcntTab<-rbind(drcnt$Daily,drcnt$Rare,drcnt$None)
+rownames(drcntTab)<-c("Daily","Rare","None")
+xtable::xtable(drcntTab,digits=0)
+
+
+
+par(mfrow=c(1,2))
+
+boxplot(talc$RXDCOUNT~talc$tgrp2,las=1,cex.axis=.9,cex.lab=.9,
+        ylab="Medication Count",xlab="c=tightened control, o=omitted control")
+
+axis(3,at=1:5,labels=round(tapply(talc$RXDCOUNT,talc$tgrp2,mean),1),
+    cex.axis=.8)
+
+library(survival)
+st<-Surv(talc$time,talc$mortstat)
+col<-c("black","grey","black","grey","black")
+lwd<-c(1,2,2,2,1)
+plot(survfit(st~talc$tgrp),col=col,
+     lty=1:5,lwd=lwd,las=1,xlim=c(0,150),
+     ylab="Probability of Survival",xlab="Months",ylim=c(.5,1),
+     cex.axis=.9,cex.lab=.9)
+
+legend(0,.75,c("D","Rc","Ro","Nc","No"),col=col,lty=1:5,lwd=lwd,cex=.8)
+rm(col,lwd)
+
+Rc<-1*(talc$tgrp2=="Rc")
+Ro<-1*(talc$tgrp2=="Ro")
+Nc<-1*(talc$tgrp2=="Nc")
+No<-1*(talc$tgrp2=="No")
+coxph(st~Rc+Ro+Nc+No+strata(talc$mset))
+```
+
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+This section replicates design sensitivity calculations,
+for example, those in Table 2.  It takes some time.
+
+```{r designsensitivity, echo=TRUE}
+ds<-function(taus,ns,df=Inf,m=NULL,m1=NULL,m2=NULL,noether=NULL,
+             maxGamma=15,brief=TRUE){
+  #
+  # Check input
+  #
+  stopifnot(is.logical(brief))
+  stopifnot(length(ns)>=2)
+  stopifnot(all(ns>0))
+  stopifnot(length(taus)==length(ns))
+  stopifnot((df==-1)|(df>=3))
+  if (is.null(m)&(is.null(noether))){
+    warning("Statistic not specified, defaulting to m=m1=m2=1")
+    m<-1
+    m1<-1
+    m2<-1
+  }
+  else if ((!is.null(m))&(!is.null(noether))) 
+    stop("(m,m1,m2) and noether specify two different statistics.")
+  else if ((is.null(m))&(!is.null(noether))) stopifnot((noether>=0)&(noether<1))
+  else stopifnot((m>=m2)&(m2>=m1)&(m1>0))
+  #
+  # Record the situation
+  sit1<-rbind(ns,taus)
+  colnames(sit1)<-1:length(ns)
+  if (is.null(noether)){
+    sit2<-c(m,m1,m2,df)
+    names(sit2)<-c("m","m1","m2","df")
+  }
+  else {
+    sit2<-c(noether,df)
+    names(sit2)<-c("noether","df")
+  }
+  #
+  # Define functions used later
+  #
+  # Define the score function for absolute ranks in [0,1]
+  multrnksU <- function(pk) {
+    n <- length(pk)
+    q <- rep(0, n)
+    q <- rep(0, n)
+    for (l in m1:m2) {
+      q <- q + (l * choose(m, l) * (pk^(l - 1)) * ((1 - 
+                                                      pk)^(m - l)))
+    }
+    q
+  }
+  noetherf<-function(pk){1*(pk>=noether)}
+  # psi is the weight function for the block ranges
+  if (is.null(m)) psi<-noetherf
+  else psi<-multrnksU
+  #
+  #  Define distributions and densities in each group
+  if (df==Inf) deltas<-taus*sqrt(2)
+  else if (df==-1) deltas<-taus*sqrt(2)*sqrt(pi*pi/3)
+  else deltas<-taus*sqrt(2)*sqrt(df/(df-2))
+  K<-length(ns)
+  if (df==Inf){
+    g<-function(y){dnorm(y)}
+    G<-function(y){pnorm(y)}
+  }
+  else if (df==-1){
+    g<-function(y){dlogis(y)}
+    G<-function(y){plogis(y)}
+  }
+  else{
+    g<-function(y){dt(y,df)}
+    G<-function(y){pt(y,df)}
+  }
+  #
+  #
+  cab<-function(a,b,v,y){
+    between<-G((y+v)-deltas)-G(y-deltas)
+    nsa<-ns
+    if (a!=b) {
+      nsa[c(a,b)]<-nsa[c(a,b)]-1
+      ns[a]*ns[b]*(prod(between^nsa))*g((y+v)-deltas[a])*g(y-deltas[b])
+    }
+    else {
+      if (ns[a]==1) 0
+      else {
+        nsa[a]<-nsa[a]-2
+        ns[a]*(ns[a]-1)*(prod(between^nsa))*g((y+v)-deltas[a])*g(y-deltas[a])
+      }
+    }
+  }
+  Cab1<-function(a,b,v){
+    # Density at range v when group a has max and group b has min
+    f<-function(y){
+      o<-NULL
+      for (i in 1:length(y)) o<-c(o,cab(a,b,v,y[i]))
+      o
+    }
+    integrate(f,-Inf,Inf)$value
+  }
+  Cab<-function(a,b){
+    # Probability group a has max and group b has min
+    f1<-function(v){Cab1(a,b,v)}
+    f<-Vectorize(f1)
+    integrate(f,0,Inf)$value
+  }
+  
+  crange<-function(v,y){
+    o<-0
+    for (a in 1:K) for (b in 1:K) {
+      o<-o+cab(a,b,v,y)
+    }
+    o
+  }
+  Crange1<-function(v){
+    # Density of the range of sum(ns) observations
+    f<-function(y){
+      o<-NULL
+      for (i in 1:length(y)) o<-c(o,crange(v,y[i]))
+      o[is.nan(o)]<-0
+      o
+    }
+    integrate(f,-Inf,Inf)$value
+  }
+  Crange<-Vectorize(Crange1)
+  #
+  # Cumulative distribution of the range of sum(ns) observations
+  CumRange1<-function(w){integrate(Crange,0,w)$value}
+  # 
+  # Begin computations
+  #
+  p1K<-Cab(1,K)  # prob group 1 contains max, group K contains min
+  pK1<-Cab(K,1)  # prob group K contains max, group 1 contains min
+  pTotal<-p1K+pK1 # prob groups 1 and K contain the decisive pair
+  #
+  #  Determine favorable expectation
+  #
+  int1<-function(v){(Cab1(1,K,v)/pTotal)*psi(CumRange1(v))}
+  int<-Vectorize(int1)
+  expectFavorable<-integrate(int,0,Inf)$value
+  #
+  #  Determine the gamma-free constant e1 in the unfavorable expectation
+  #
+  intBoth1<-function(v){((Cab1(1,K,v)+Cab1(K,1,v))/pTotal)*psi(CumRange1(v))}
+  intBoth<-Vectorize(intBoth1)
+  e1<-integrate(intBoth,0,Inf)$value
+  f<-function(gammas){
+    (e1*gammas/(1+gammas))-expectFavorable
+  }
+  # Solve for design sensitivity ds
+  ds<-uniroot(f,c(1,maxGamma))$root
+  #
+  # Prepare output
+  probabilities<-c(p1K,pK1,pTotal)
+  names(probabilities)<-c("1 is max","K is max","(1,K) is Decisive")
+  if (brief) list(ds=ds,probabilities=probabilities)
+  else list(ds=ds,probabilities=probabilities,expectFavorable=expectFavorable,
+            expectUnfavorable=f(ds)+expectFavorable,situation=sit1,statistic=sit2)
+}
+
+
+
+
+dsTable131<-matrix(NA,6,2)
+colnames(dsTable131)<-c("C1","C2")
+rownames(dsTable131)<-c("Case1N","Case1L","Case2N","Case2L","Case3N","Case3L")
+
+temp<-ds(c(1/3,0,0),c(1,3,1),m=8,m1=7,m2=8)
+dsTable131[1,1]<-temp$ds
+dsTable131[1,2]<-temp$ds
+
+temp<-ds(c(1/3,0,0),c(1,3,1),m=8,m1=7,m2=8,df=-1)
+dsTable131[2,1]<-temp$ds
+dsTable131[2,2]<-temp$ds
+
+temp<-ds(c(5/12,5/12,0),c(1,3,1),m=8,m1=7,m2=8)
+dsTable131[3,1]<-1
+dsTable131[3,2]<-temp$ds
+
+temp<-ds(c(5/12,5/12,0),c(1,3,1),m=8,m1=7,m2=8,df=-1)
+dsTable131[4,1]<-1
+dsTable131[4,2]<-temp$ds
+
+temp<-ds(c(5/12,0,2/12),c(1,3,1),m=8,m1=7,m2=8)
+dsTable131[5,1]<-temp$ds
+temp<-ds(c(5/12,2/12,0),c(1,3,1),m=8,m1=7,m2=8)
+dsTable131[5,2]<-temp$ds
+
+temp<-ds(c(5/12,0,2/12),c(1,3,1),m=8,m1=7,m2=8,df=-1)
+dsTable131[6,1]<-temp$ds
+temp<-ds(c(5/12,2/12,0),c(1,3,1),m=8,m1=7,m2=8,df=-1)
+dsTable131[6,2]<-temp$ds
+
+dsTable131JustOne<-matrix(NA,6,2)
+colnames(dsTable131JustOne)<-c("justC1","justC2")
+rownames(dsTable131JustOne)<-c("Case1N","Case1L","Case2N","Case2L","Case3N","Case3L")
+
+temp<-ds(c(1/3,0),c(1,2),m=8,m1=7,m2=8)
+dsTable131JustOne[1,1]<-temp$ds
+dsTable131JustOne[1,2]<-temp$ds
+
+temp<-ds(c(1/3,0),c(1,2),m=8,m1=7,m2=8,df=-1)
+dsTable131JustOne[2,1]<-temp$ds
+dsTable131JustOne[2,2]<-temp$ds
+
+temp<-ds(c(5/12,0),c(1,2),m=8,m1=7,m2=8)
+dsTable131JustOne[3,1]<-1
+dsTable131JustOne[3,2]<-temp$ds
+
+temp<-ds(c(5/12,0),c(1,2),m=8,m1=7,m2=8,df=-1)
+dsTable131JustOne[4,1]<-1
+dsTable131JustOne[4,2]<-temp$ds
+
+temp<-ds(c(5/12,2/12),c(1,2),m=8,m1=7,m2=8)
+dsTable131JustOne[5,1]<-temp$ds
+temp<-ds(c(5/12,0),c(1,2),m=8,m1=7,m2=8)
+dsTable131JustOne[5,2]<-temp$ds
+
+temp<-ds(c(5/12,2/12),c(1,2),m=8,m1=7,m2=8,df=-1)
+dsTable131JustOne[6,1]<-temp$ds
+temp<-ds(c(5/12,0),c(1,2),m=8,m1=7,m2=8,df=-1)
+dsTable131JustOne[6,2]<-temp$ds
+
+rm(temp)
+
+xtable::xtable(cbind(dsTable131,dsTable131JustOne)[c(1,2,5,6,3,4),],digits=1)
+```
+
+XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+This final section reproduces the simulation in the on-line supplemental appendix.  It takes some time.
+
+```{r simulation, echo=TRUE}
+library(alcoholSurv)
+
+sim1<-function(I,J=5,omega=c(1/3,0,0,0,0),dist="N"){
+  stopifnot((dist=="N")|(dist=="L")|(dist=="t5"))
+  stopifnot(J==length(omega))
+  if (dist=="N"){
+    y<-matrix(rnorm(I*J),I,J)
+    mult<-sqrt(2)
+  }
+  else if (dist=="t5"){
+    y<-matrix(rt(I*J,5),I,J)
+    mult<-sqrt(2)*sqrt(5/3)
+  }
+  else {
+    y<-matrix(rlogis(I*J),I,J)
+    mult<-sqrt(2)*sqrt(pi*pi/3)
+  }
+  for (j in 1:J) y[,j]<-y[,j]+omega[j]*mult
+  y
+}
+
+sim<-function(reps,I,J,omega,colGroups=c("T","C1","C1","C2","C2"),
+              gamma=1,dist="N",phi="u878"){
+  o<-matrix(NA,reps,8)
+  rownames(o)<-1:reps
+  colnames(o)<-c("TC1","TC2","Fisher","Truncated","TC1C2",
+                 "justRC1","justRC2","Bonf")
+  nm<-paste("I",I,"J",J,dist,phi,"Gamma",gamma,sep="")
+  for (i in 1:length(omega)) nm<-paste(nm,round(omega[i],2))
+  names(dimnames(o))<-c("",nm)
+  ugroups<-unique(colGroups)
+  who1<-is.element(colGroups,ugroups[1:2])
+  who2<-is.element(colGroups,ugroups[c(1,3)])
+  altGroups0<-c(colGroups[1],rep(colGroups[2],J-1))
+  altGroups1<-colGroups[who1]
+  altGroups2<-colGroups[who2]
+  for (l in 1:reps){
+    y<-sim1(I,J=J,omega=omega,dist=dist)
+    lo<-wgtRankCef(y,colGroups=colGroups,phi=phi,gamma=gamma)
+    o[l,1]<-lo$pvals[1]
+    o[l,2]<-lo$pvals[2]
+    if (min(o[l,1],o[l,2])==0){
+      o[l,3]<-0
+      o[l,4]<-0
+    }
+    else{
+      o[l,3]<-sensitivitymv::truncatedP(c(o[l,1],o[l,2]),trunc=1)
+      o[l,4]<-sensitivitymv::truncatedP(c(o[l,1],o[l,2]),trunc=0.2)
+    }
+    lo2<-wgtRankCef(y,colGroups=altGroups0,phi=phi,gamma=gamma)
+    o[l,5]<-lo2$pvals[1]
+    lo2<-wgtRankCef(y[,who1],colGroups=altGroups1,phi=phi,gamma=gamma)
+    o[l,6]<-lo2$pvals[1]
+    lo2<-wgtRankCef(y[,who2],colGroups=altGroups2,phi=phi,gamma=gamma)
+    o[l,7]<-lo2$pvals[1]
+    o[l,8]<-min(1,2*min(o[l,6],o[l,7]))
+  }
+  o
+}
+
+reps<-2500
+ss<-1000
+uphi<-"u878"
+ugamma<-3
+set.seed(12345)
+LI1000J5bothGamma3<-sim(reps,ss,5,c(4/12,0,0,0,0),dist="L",gamma=ugamma,phi=uphi)
+set.seed(12345)
+NI1000J5bothGamma3<-sim(reps,ss,5,c(4/12,0,0,0,0),dist="N",gamma=ugamma,phi=uphi)
+set.seed(12345)
+LI1000J5oneGamma3<-sim(reps,ss,5,c(5/12,5/12,5/12,0,0),dist="L",gamma=ugamma,phi=uphi)
+set.seed(12345)
+NI1000J5oneGamma3<-sim(reps,ss,5,c(5/12,5/12,5/12,0,0),dist="N",gamma=ugamma,phi=uphi)
+set.seed(12345)
+LI1000J5halfGamma3<-sim(reps,ss,5,c(5/12,2/12,2/12,0,0),dist="L",gamma=ugamma,phi=uphi)
+set.seed(12345)
+NI1000J5halfGamma3<-sim(reps,ss,5,c(5/12,2/12,2/12,0,0),dist="N",gamma=ugamma,phi=uphi)
+rm(uphi,ugamma,ss,reps)
+
+powerTabI1000Gamma3<-rbind(apply(NI1000J5bothGamma3<=0.05,2,mean),
+                           apply(LI1000J5bothGamma3<=0.05,2,mean),
+                           apply(NI1000J5halfGamma3<=0.05,2,mean),
+                           apply(LI1000J5halfGamma3<=0.05,2,mean),
+                           apply(NI1000J5oneGamma3<=0.05,2,mean),
+                           apply(LI1000J5oneGamma3<=0.05,2,mean)
+)
+rownames(powerTabI1000Gamma3)<-c("Nboth","Lboth","Nhalf","Lhalf","None","Lone")
+
+reps<-2500
+ss<-2000
+uphi<-"u878"
+ugamma<-3.5
+set.seed(12345)
+LI2000J5bothGamma35<-sim(reps,ss,5,c(4/12,0,0,0,0),dist="L",gamma=ugamma,phi=uphi)
+set.seed(12345)
+NI2000J5bothGamma35<-sim(reps,ss,5,c(4/12,0,0,0,0),dist="N",gamma=ugamma,phi=uphi)
+set.seed(12345)
+LI2000J5oneGamma35<-sim(reps,ss,5,c(5/12,5/12,5/12,0,0),dist="L",gamma=ugamma,phi=uphi)
+set.seed(12345)
+NI2000J5oneGamma35<-sim(reps,ss,5,c(5/12,5/12,5/12,0,0),dist="N",gamma=ugamma,phi=uphi)
+set.seed(12345)
+LI2000J5halfGamma35<-sim(reps,ss,5,c(5/12,2/12,2/12,0,0),dist="L",gamma=ugamma,phi=uphi)
+set.seed(12345)
+NI2000J5halfGamma35<-sim(reps,ss,5,c(5/12,2/12,2/12,0,0),dist="N",gamma=ugamma,phi=uphi)
+rm(uphi,ugamma,ss,reps)
+
+powerTabI2000Gamma35<-rbind(apply(NI2000J5bothGamma35<=0.05,2,mean),
+                            apply(LI2000J5bothGamma35<=0.05,2,mean),
+                            apply(NI2000J5halfGamma35<=0.05,2,mean),
+                            apply(LI2000J5halfGamma35<=0.05,2,mean),
+                            apply(NI2000J5oneGamma35<=0.05,2,mean),
+                            apply(LI2000J5oneGamma35<=0.05,2,mean)
+)
+rownames(powerTabI2000Gamma35)<-c("Nboth","Lboth","Nhalf","Lhalf","None","Lone")
+
+
+reps<-2500
+ss<-3000
+uphi<-"u878"
+ugamma<-4
+set.seed(12345)
+LI3000J5bothGamma4<-sim(reps,ss,5,c(4/12,0,0,0,0),dist="L",gamma=ugamma,phi=uphi)
+set.seed(12345)
+NI3000J5bothGamma4<-sim(reps,ss,5,c(4/12,0,0,0,0),dist="N",gamma=ugamma,phi=uphi)
+set.seed(12345)
+LI3000J5oneGamma4<-sim(reps,ss,5,c(5/12,5/12,5/12,0,0),dist="L",gamma=ugamma,phi=uphi)
+set.seed(12345)
+NI3000J5oneGamma4<-sim(reps,ss,5,c(5/12,5/12,5/12,0,0),dist="N",gamma=ugamma,phi=uphi)
+set.seed(12345)
+LI3000J5halfGamma4<-sim(reps,ss,5,c(5/12,2/12,2/12,0,0),dist="L",gamma=ugamma,phi=uphi)
+set.seed(12345)
+NI3000J5halfGamma4<-sim(reps,ss,5,c(5/12,2/12,2/12,0,0),dist="N",gamma=ugamma,phi=uphi)
+rm(uphi,ugamma,ss,reps)
+
+powerTabI3000Gamma4<-rbind(apply(NI3000J5bothGamma4<=0.05,2,mean),
+                           apply(LI3000J5bothGamma4<=0.05,2,mean),
+                           apply(NI3000J5halfGamma4<=0.05,2,mean),
+                           apply(LI3000J5halfGamma4<=0.05,2,mean),
+                           apply(NI3000J5oneGamma4<=0.05,2,mean),
+                           apply(LI3000J5oneGamma4<=0.05,2,mean)
+)
+rownames(powerTabI3000Gamma4)<-c("Nboth","Lboth","Nhalf","Lhalf","None","Lone")
+
+xtable::xtable(round(rbind(powerTabI1000Gamma3,powerTabI2000Gamma35,
+                           powerTabI3000Gamma4),2)[,1:5])
+```
